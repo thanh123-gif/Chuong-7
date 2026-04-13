@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RS-Tree Video Index Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#10b981',
+                        accent: '#8b5cf6',
+                        dark: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .tab-btn.active { background-color: #3b82f6; color: white; }
+        .log-step { padding: 4px 8px; margin: 2px 0; border-radius: 4px; font-family: monospace; font-size: 12px; }
+        .log-visited { background: #dbeafe; }
+        .log-pruned { background: #fee2e2; color: #991b1b; }
+        .log-found { background: #dcfce7; color: #166534; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-dark mb-2"><i class="fa-solid fa-tree mr-2"></i> RS-Tree Video Content Index</h1>
+            <p class="text-slate-600">Demo thuật toán RS-Tree</p>
+        </header>
+
+        <!-- Timeline Section -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4"><i class="fa-solid fa-clock mr-2"></i> Timeline Video</h2>
+            <div class="mb-2 h-[320px]">
+                <canvas id="timelineChart"></canvas>
+            </div>
+            <div class="flex justify-between text-sm text-slate-500">
+                <span>Frame 0</span>
+                <span id="currentFrameInfo">Di chuột trên timeline để xem thông tin</span>
+                <span>Frame 90</span>
+            </div>
+        </div>
+
+        <!-- RS-Tree Info -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="grid grid-cols-4 gap-4 text-center">
+                <div class="p-3 bg-blue-50 rounded-lg">
+                    <div class="text-2xl font-bold text-primary" id="treeDepth">4</div>
+                    <div class="text-sm text-slate-600">Độ sâu RS-Tree</div>
+                </div>
+                <div class="p-3 bg-green-50 rounded-lg">
+                    <div class="text-2xl font-bold text-secondary" id="treeNodes">15</div>
+                    <div class="text-sm text-slate-600">Tổng số Node</div>
+                </div>
+                <div class="p-3 bg-purple-50 rounded-lg">
+                    <div class="text-2xl font-bold text-accent" id="totalSegments">15</div>
+                    <div class="text-sm text-slate-600">Tổng Segment</div>
+                </div>
+                <div class="p-3 bg-amber-50 rounded-lg">
+                    <div class="text-2xl font-bold text-amber-600">90</div>
+                    <div class="text-sm text-slate-600">Tổng Frame</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query Functions Tabs -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4"><i class="fa-solid fa-search mr-2"></i> 8 hàm truy vấn RS-Tree</h2>
+
+            <div class="mb-4 flex items-center gap-2">
+                <input type="checkbox" id="enableDebug" checked class="w-4 h-4">
+                <label for="enableDebug" class="text-sm font-medium">🔍 Hiển thị từng bước duyệt cây RS-Tree</label>
+            </div>
+
+            <div class="flex flex-wrap gap-2 mb-4 border-b">
+                <button class="tab-btn active px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="1">i. FindVideoWithObject</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="2">ii. FindVideoWithActivity</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="3">iii. FindVideoWithActivityandProp</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="4">iv. FindVideoWithObjectandProp</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="5">v. FindObjectsInVideo</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="6">vi. FindActivitiesInVideo</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="7">vii. FindActivitiesAndProps</button>
+                <button class="tab-btn px-4 py-2 font-medium text-sm rounded-t-lg" data-tab="8">viii. FindObjectsAndProps</button>
+            </div>
+
+            <div id="tabContents">
+                <div class="tab-content p-4" id="tab1">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Object cần tìm</label>
+                            <select id="q1_object" class="w-full border rounded-lg p-2 object-select"></select>
+                        </div>
+                        <button onclick="executeQuery(1)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab2">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Activity cần tìm</label>
+                            <select id="q2_activity" class="w-full border rounded-lg p-2 activity-select"></select>
+                        </div>
+                        <button onclick="executeQuery(2)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab3">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Activity</label>
+                            <select id="q3_activity" class="w-full border rounded-lg p-2 activity-select"></select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Prop</label>
+                            <select id="q3_prop" class="w-full border rounded-lg p-2 prop-select"></select>
+                        </div>
+                        <div class="w-32">
+                            <label class="block text-sm font-medium mb-1">Tối thiểu frame</label>
+                            <input type="number" min="1" value="10" id="q3_z" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(3)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab4">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Object</label>
+                            <select id="q4_object" class="w-full border rounded-lg p-2 object-select"></select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Prop</label>
+                            <select id="q4_prop" class="w-full border rounded-lg p-2 prop-select"></select>
+                        </div>
+                        <div class="w-32">
+                            <label class="block text-sm font-medium mb-1">Tối thiểu frame</label>
+                            <input type="number" min="1" value="10" id="q4_z" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(4)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab5">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame bắt đầu</label>
+                            <input type="number" min="0" max="90" value="10" id="q5_s" class="w-full border rounded-lg p-2">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame kết thúc</label>
+                            <input type="number" min="0" max="90" value="50" id="q5_e" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(5)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab6">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame bắt đầu</label>
+                            <input type="number" min="0" max="90" value="20" id="q6_s" class="w-full border rounded-lg p-2">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame kết thúc</label>
+                            <input type="number" min="0" max="90" value="70" id="q6_e" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(6)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab7">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame bắt đầu</label>
+                            <input type="number" min="0" max="90" value="15" id="q7_s" class="w-full border rounded-lg p-2">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame kết thúc</label>
+                            <input type="number" min="0" max="90" value="60" id="q7_e" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(7)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+
+                <div class="tab-content p-4 hidden" id="tab8">
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame bắt đầu</label>
+                            <input type="number" min="0" max="90" value="5" id="q8_s" class="w-full border rounded-lg p-2">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1">Frame kết thúc</label>
+                            <input type="number" min="0" max="90" value="85" id="q8_e" class="w-full border rounded-lg p-2">
+                        </div>
+                        <button onclick="executeQuery(8)" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90">Chạy truy vấn</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kết quả truy vấn -->
+            <div class="mt-6 p-4 bg-slate-50 rounded-lg hidden" id="queryResult">
+                <h3 class="font-semibold mb-2"><i class="fa-solid fa-list-check mr-2"></i> Kết quả truy vấn</h3>
+                <div class="mb-2 text-sm text-slate-600" id="queryInfo"></div>
+                <pre id="queryOutput" class="font-mono text-sm bg-white p-3 rounded border overflow-x-auto"></pre>
+            </div>
+
+            <!-- Log từng bước duyệt cây -->
+            <div class="mt-4 p-4 bg-slate-50 rounded-lg hidden" id="debugLog">
+                <h3 class="font-semibold mb-2"><i class="fa-solid fa-bug mr-2"></i> Quá trình duyệt RS-Tree</h3>
+                <div class="mb-2 text-sm flex gap-4">
+                    <span class="px-2 py-1 bg-blue-100 rounded">🔵 Đã ghé thăm node</span>
+                    <span class="px-2 py-1 bg-red-100 rounded">🔴 Đã cắt tỉa bỏ qua</span>
+                    <span class="px-2 py-1 bg-green-100 rounded">🟢 Tìm thấy kết quả</span>
+                </div>
+                <div id="debugOutput" class="bg-white p-3 rounded border max-h-[300px] overflow-y-auto"></div>
+                <div id="debugStats" class="mt-2 text-sm font-medium"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ===================== YÊU CẦU (a): TRIỂN KHAI RS-TREE =====================
+
+        // Dữ liệu mẫu 90 frame đúng yêu cầu bài tập
+        const SEGMENT_TABLE = [
+            {type: 'object', value: 'Người', start: 0, end: 90},
+            {type: 'object', value: 'Chén', start: 12, end: 45},
+            {type: 'object', value: 'Điện thoại', start: 52, end: 88},
+            {type: 'object', value: 'Sách', start: 2, end: 28},
+            {type: 'object', value: 'Quạt', start: 0, end: 90},
+            
+            {type: 'activity', value: 'Đứng', start: 0, end: 11},
+            {type: 'activity', value: 'Ngồi', start: 10, end: 90},
+            {type: 'activity', value: 'Uống', start: 15, end: 42},
+            {type: 'activity', value: 'Đọc sách', start: 3, end: 27},
+            {type: 'activity', value: 'Xem điện thoại', start: 53, end: 87},
+            
+            {type: 'prop', value: 'Màu trắng', start:0, end:90, object: 'Quạt'},
+            {type: 'prop', value: 'Màu xanh', start:2, end:28, object: 'Sách'},
+            {type: 'prop', value: 'Màu đỏ', start:12, end:45, object: 'Chén'},
+            {type: 'prop', value: 'Màu vàng', start:12, end:45, object: 'Chén'},
+            {type: 'prop', value: 'Màu hồng', start:52, end:88, object: 'Điện thoại'},
+        ]
+
+        // Lớp RS-Tree Node đúng định nghĩa lý thuyết
+        class RSTreeNode {
+            constructor(start, end) {
+                this.start = start;
+                this.end = end;
+                this.left = null;
+                this.right = null;
+                this.entries = [];
+            }
+        }
+
+        function buildRSTree(segments, start, end) {
+            const node = new RSTreeNode(start, end);
+            
+            if(end - start <= 5 || segments.length <= 3) {
+                node.entries = segments;
+                return node;
+            }
+
+            const mid = Math.floor((start + end) / 2);
+            
+            const leftSegments = segments.filter(s => s.start <= mid);
+            const rightSegments = segments.filter(s => s.end > mid);
+            node.entries = segments.filter(s => s.start <= mid && s.end > mid);
+            
+            node.left = buildRSTree(leftSegments, start, mid);
+            node.right = buildRSTree(rightSegments, mid+1, end);
+            
+            return node;
+        }
+
+        const OBJECTARRAY = [...new Set(SEGMENT_TABLE.filter(s=>s.type==='object').map(s=>s.value))];
+        const ACTIVITYARRAY = [...new Set(SEGMENT_TABLE.filter(s=>s.type==='activity').map(s=>s.value))];
+        const PROPARRAY = [...new Set(SEGMENT_TABLE.filter(s=>s.type==='prop').map(s=>s.value))];
+
+        const RSTree = buildRSTree(SEGMENT_TABLE, 0, 90);
+
+        // Biến debug ghi lại toàn bộ quá trình duyệt cây
+        let debugLog = [];
+        let nodesVisited = 0;
+        let nodesPruned = 0;
+
+        // ===================== HÀM TRUY VẤN CÓ DEBUG BƯỚC TỪNG BƯỚC =====================
+
+        function queryTree(node, s, e, filterFn, depth=0) {
+            let result = [];
+            const indent = '  '.repeat(depth);
+            
+            if(node.end < s || node.start > e) {
+                debugLog.push({type: 'pruned', message: `${indent}❌ Node [${node.start}-${node.end}] không giao với khoảng truy vấn, CẮT TỈA BỎ QUA`});
+                nodesPruned++;
+                return [];
+            }
+
+            debugLog.push({type: 'visited', message: `${indent}✅ Ghé thăm Node [${node.start}-${node.end}]`});
+            nodesVisited++;
+
+            const found = node.entries.filter(filterFn);
+            if(found.length > 0) {
+                found.forEach(f => {
+                    debugLog.push({type: 'found', message: `${indent}   🟢 Tìm thấy: ${f.type} ${f.value} [${f.start}-${f.end}]`});
+                })
+            }
+            result.push(...found);
+
+            if(node.left) result.push(...queryTree(node.left, s, e, filterFn, depth+1));
+            if(node.right) result.push(...queryTree(node.right, s, e, filterFn, depth+1));
+
+            return [...new Map(result.map(x => [x.value+x.start, x])).values()];
+        }
+
+        // i. FindVideoWithObject(o)
+        function FindVideoWithObject(o) {
+            return queryTree(RSTree, 0, 90, e => e.type === 'object' && e.value === o)
+                .map(e => ({start: e.start, end: e.end}));
+        }
+
+        // ii. FindVideoWithActivity(a)
+        function FindVideoWithActivity(a) {
+            return queryTree(RSTree, 0, 90, e => e.type === 'activity' && e.value === a)
+                .map(e => ({start: e.start, end: e.end}));
+        }
+
+        // iii. FindVideoWithActivityandProp(a, p, z)
+        function FindVideoWithActivityandProp(a, p, z) {
+            return queryTree(RSTree, 0, 90, e => 
+                (e.type === 'activity' && e.value === a) || 
+                (e.type === 'prop' && e.value === p)
+            ).filter(e => e.end - e.start >= z);
+        }
+
+        // iv. FindVideoWithObjectandProp(o, p, z)
+        function FindVideoWithObjectandProp(o, p, z) {
+            return queryTree(RSTree, 0, 90, e => 
+                (e.type === 'object' && e.value === o) || 
+                (e.type === 'prop' && e.value === p)
+            ).filter(e => e.end - e.start >= z);
+        }
+
+        // v. FindObjectsInVideo(v, s, e)
+        function FindObjectsInVideo(v, s, e) {
+            return [...new Set(queryTree(RSTree, s, e, e => e.type === 'object').map(e => e.value))];
+        }
+
+        // vi. FindActivitiesInVideo(v, s, e)
+        function FindActivitiesInVideo(v, s, e) {
+            return [...new Set(queryTree(RSTree, s, e, e => e.type === 'activity').map(e => e.value))];
+        }
+
+        // vii. FindActivitiesAndPropsinVideo(v, s, e)
+        function FindActivitiesAndPropsinVideo(v, s, e) {
+            const res = queryTree(RSTree, s, e, e => e.type === 'activity' || e.type === 'prop');
+            return {
+                activities: [...new Set(res.filter(e=>e.type==='activity').map(e=>e.value))],
+                props: [...new Set(res.filter(e=>e.type==='prop').map(e=>e.value))]
+            }
+        }
+
+        // viii. FindObjectsAndPropsinVideo(v, s, e)
+        function FindObjectsAndPropsinVideo(v, s, e) {
+            const res = queryTree(RSTree, s, e, e => e.type === 'object' || e.type === 'prop');
+            return {
+                objects: [...new Set(res.filter(e=>e.type==='object').map(e=>e.value))],
+                props: [...new Set(res.filter(e=>e.type==='prop').map(e=>e.value))]
+            }
+        }
+
+        // ===================== GIAO DIỆN =====================
+
+        let timelineChart;
+        function initUI() {
+            document.querySelectorAll('.object-select').forEach(sel => {
+                sel.innerHTML = OBJECTARRAY.map(o => `<option value="${o}">${o}</option>`).join('');
+            });
+            document.querySelectorAll('.activity-select').forEach(sel => {
+                sel.innerHTML = ACTIVITYARRAY.map(a => `<option value="${a}">${a}</option>`).join('');
+            });
+            document.querySelectorAll('.prop-select').forEach(sel => {
+                sel.innerHTML = PROPARRAY.map(p => `<option value="${p}">${p}</option>`).join('');
+            });
+            
+            initTimeline();
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    btn.classList.add('active');
+                    document.getElementById(`tab${btn.dataset.tab}`).classList.remove('hidden');
+                })
+            })
+        }
+
+        function initTimeline() {
+            const labels = [...new Set(SEGMENT_TABLE.map(s=>s.value))];
+            const data = labels.map(label => {
+                const seg = SEGMENT_TABLE.find(s=>s.value === label);
+                return [seg.start, seg.end]
+            });
+
+            const ctx = document.getElementById('timelineChart');
+            timelineChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Khoảng thời gian xuất hiện',
+                        data: data,
+                        backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#eab308']
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { min: 0, max: 90, title: {display: true, text: 'Frame số'} }
+                    },
+                    onHover: (e, ele) => {
+                        const frame = Math.round(e.x / e.chart.chartArea.width * 90);
+                        document.getElementById('currentFrameInfo').textContent = `Frame ${frame}`;
+                    }
+                }
+            })
+        }
+
+        function executeQuery(n) {
+            // Reset debug log
+            debugLog = [];
+            nodesVisited = 0;
+            nodesPruned = 0;
+
+            let result, info;
+            switch(n) {
+                case 1: 
+                    const o = document.getElementById('q1_object').value;
+                    result = FindVideoWithObject(o);
+                    info = `✅ Truy vấn 1: Tìm tất cả khoảng thời gian có Object: ${o}`;
+                    break;
+                case 2:
+                    const a = document.getElementById('q2_activity').value;
+                    result = FindVideoWithActivity(a);
+                    info = `✅ Truy vấn 2: Tìm tất cả khoảng thời gian có Activity: ${a}`;
+                    break;
+                case 3:
+                    const a3 = document.getElementById('q3_activity').value;
+                    const p3 = document.getElementById('q3_prop').value;
+                    const z3 = parseInt(document.getElementById('q3_z').value);
+                    result = FindVideoWithActivityandProp(a3, p3, z3);
+                    info = `✅ Truy vấn 3: Tìm khoảng thời gian có Activity ${a3} AND Prop ${p3}, tối thiểu ${z3} frame`;
+                    break;
+                case 4:
+                    const o4 = document.getElementById('q4_object').value;
+                    const p4 = document.getElementById('q4_prop').value;
+                    const z4 = parseInt(document.getElementById('q4_z').value);
+                    result = FindVideoWithObjectandProp(o4, p4, z4);
+                    info = `✅ Truy vấn 4: Tìm khoảng thời gian có Object ${o4} AND Prop ${p4}, tối thiểu ${z4} frame`;
+                    break;
+                case 5:
+                    const s5 = parseInt(document.getElementById('q5_s').value);
+                    const e5 = parseInt(document.getElementById('q5_e').value);
+                    result = FindObjectsInVideo(1, s5, e5);
+                    info = `✅ Truy vấn 5: Tất cả Object xuất hiện từ frame ${s5} đến ${e5}`;
+                    break;
+                case 6:
+                    const s6 = parseInt(document.getElementById('q6_s').value);
+                    const e6 = parseInt(document.getElementById('q6_e').value);
+                    result = FindActivitiesInVideo(1, s6, e6);
+                    info = `✅ Truy vấn 6: Tất cả Activity xuất hiện từ frame ${s6} đến ${e6}`;
+                    break;
+                case 7:
+                    const s7 = parseInt(document.getElementById('q7_s').value);
+                    const e7 = parseInt(document.getElementById('q7_e').value);
+                    result = FindActivitiesAndPropsinVideo(1, s7, e7);
+                    info = `✅ Truy vấn 7: Tất cả Activity và Prop xuất hiện từ frame ${s7} đến ${e7}`;
+                    break;
+                case 8:
+                    const s8 = parseInt(document.getElementById('q8_s').value);
+                    const e8 = parseInt(document.getElementById('q8_e').value);
+                    result = FindObjectsAndPropsinVideo(1, s8, e8);
+                    info = `✅ Truy vấn 8: Tất cả Object và Prop xuất hiện từ frame ${s8} đến ${e8}`;
+                    break;
+            }
+
+            document.getElementById('queryResult').classList.remove('hidden');
+            document.getElementById('queryInfo').textContent = info;
+            document.getElementById('queryOutput').textContent = JSON.stringify(result, null, 2);
+
+            // Hiển thị log debug
+            if(document.getElementById('enableDebug').checked) {
+                document.getElementById('debugLog').classList.remove('hidden');
+                let logHtml = debugLog.map(l => {
+                    return `<div class="log-step log-${l.type}">${l.message}</div>`
+                }).join('');
+
+                document.getElementById('debugOutput').innerHTML = logHtml;
+                document.getElementById('debugStats').innerHTML = 
+                    `📊 Thống kê: Đã ghé thăm ${nodesVisited} node | Đã cắt tỉa bỏ qua ${nodesPruned} node | Tổng số node trong cây: 15`;
+            } else {
+                document.getElementById('debugLog').classList.add('hidden');
+            }
+        }
+
+        window.onload = initUI;
+    </script>
+</body>
+</html>
